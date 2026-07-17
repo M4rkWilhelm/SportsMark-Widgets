@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SportsMark Widget Demo - Horizontal</title>
+</head>
+<body>
+<h1>SportsMark Widget Demo (Horizontal)</h1>
+
+<div style="width:1200px;height:600px;">
+    <div id="sportsmark-widget" style="width:100%;height:100%;"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/gh/M4rkWilhelm/SportsMark-Widgets@v1.0.0/dist/sportsmark-widget.js"></script>
+<script>
+    SportsMarkWidget.create(document.getElementById('sportsmark-widget'), {
+        showHeader: false,
+        widgetBg: '#e2e8f0',
+        gameBg: '#f8fafc',
+        navBg: '#334155',
+        widgetBorderColor: '#64748b',
+        gameBorderColor: '#64748b',
+        widgetBorderWidth: '0px',
+        gameBorderWidth: '1px',
+        widgetBorderRadius: '0.25rem',
+        gameBorderRadius: '0.25rem',
+        refreshMs: 60000,
+        debug: true,
+        scoreStream: {
+            method: 'recommended.broadcast.games.search',
+            userWidgetIds: [68921],
+            count: 30,
+            apiKey: '59466a22-0f76-4dbe-843a-7a25282b17c4'
+        }
+    });
+</script>
+</body>
+</html>

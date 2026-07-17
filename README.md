@@ -1,6 +1,11 @@
 # SportsMark Widgets
 
-Custom SportsMark scoreboard widget assets published via GitHub + jsDelivr.
+SportsMark widget assets distributed via GitHub + jsDelivr.
+
+## Live demos
+
+- Vertical: https://m4rkwilhelm.github.io/SportsMark-Widgets/demos/vertical.html
+- Horizontal: https://m4rkwilhelm.github.io/SportsMark-Widgets/demos/horizontal.html
 
 ## Published files
 
@@ -11,6 +16,8 @@ Custom SportsMark scoreboard widget assets published via GitHub + jsDelivr.
 
 Use a tagged release for stable caching (recommended: `@v1.0.0`, `@v1.1.0`, etc.).
 
+
+
 ```html
 
 <div id="sportsmark-widget" style="width:100%;height:100%;"></div>
@@ -19,7 +26,7 @@ Use a tagged release for stable caching (recommended: `@v1.0.0`, `@v1.1.0`, etc.
 <script>
     SportsMarkWidget.create(document.getElementById('sportsmark-widget'), {
         title: 'Northwest Ace Highschool Sports', // Replaced by the logo if logo exists
-        titleLogoUrl: 'https://cdn.jsdelivr.net/gh/M4rkWilhelm/SportsMark-Widgets@v1.0.0/assets/nwAceHSSR.png',
+        titleLogoUrl: 'https://cdn.jsdelivr.net/gh/M4rkWilhelm/SportsMark-Widgets@v1.0.0/assets/images/nwAceHSSR.png',
         subtitle: '', // Ignored if blank
         widgetBg: '#e2e8f0',
         gameBg: '#f8fafc',

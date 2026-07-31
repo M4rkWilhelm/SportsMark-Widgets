@@ -72,17 +72,21 @@
         return date;
     }
 
-    function endOfToday() {
+
+    function daysAhead(days) {
         var date = new Date();
+        date.setDate(date.getDate() + days);
         date.setHours(23, 59, 59, 999);
         return date;
     }
 
-    function parseGameDate(game) {
-        var dateValue = game.dateTime || game.startDateTime || game.scheduledStart || game.gameDate || game.date;
-
+    function parseDateValue(dateValue) {
         if (dateValue == null) {
             return null;
+        }
+
+        if (dateValue instanceof Date) {
+            return Number.isNaN(dateValue.getTime()) ? null : new Date(dateValue.getTime());
         }
 
         if (typeof dateValue === "number") {
@@ -90,12 +94,37 @@
             return Number.isNaN(fromNumber.getTime()) ? null : fromNumber;
         }
 
-        var fromString = new Date(dateValue);
-        if (!Number.isNaN(fromString.getTime())) {
-            return fromString;
+        if (typeof dateValue === "string") {
+            var trimmed = dateValue.trim();
+            if (!trimmed) {
+                return null;
+            }
+
+            var hasExplicitTimezone = /(?:z|[+\-]\d{2}:?\d{2})$/i.test(trimmed);
+            var scoreStreamDateTimeMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[ t](\d{2}):(\d{2})(?::(\d{2}))?$/i);
+            if (scoreStreamDateTimeMatch && !hasExplicitTimezone) {
+                var year = Number(scoreStreamDateTimeMatch[1]);
+                var month = Number(scoreStreamDateTimeMatch[2]) - 1;
+                var day = Number(scoreStreamDateTimeMatch[3]);
+                var hour = Number(scoreStreamDateTimeMatch[4]);
+                var minute = Number(scoreStreamDateTimeMatch[5]);
+                var second = Number(scoreStreamDateTimeMatch[6] || "0");
+                var fromUtc = new Date(Date.UTC(year, month, day, hour, minute, second));
+                if (!Number.isNaN(fromUtc.getTime())) {
+                    return fromUtc;
+                }
+            }
+
+            var fromString = new Date(trimmed);
+            return Number.isNaN(fromString.getTime()) ? null : fromString;
         }
 
         return null;
+    }
+
+    function parseGameDate(game) {
+        var dateValue = game.dateTime || game.startDateTime || game.scheduledStart || game.gameDate || game.date;
+        return parseDateValue(dateValue);
     }
 
     function compareBySportThenTimeAscending(a, b) {
@@ -198,7 +227,7 @@
             if (scoreStream.beforeDateTime) {
                 params.beforeDateTime = scoreStream.beforeDateTime;
             } else {
-                params.beforeDateTime = formatScoreStreamDateTime(endOfToday());
+                params.beforeDateTime = formatScoreStreamDateTime(daysAhead(28));
             }
 
             if (scoreStream.count != null) {
@@ -510,12 +539,16 @@
             }
         });
 
-        return fallback;
+        if (fallback) {
+            return fallback;
+        }
+
+        return knownDays[0];
     }
 
     function formatDayLabel(dayKey) {
         if (!dayKey) {
-            return "No games";
+            return "Checking...";
         }
 
         var parts = dayKey.split("-");
@@ -605,7 +638,7 @@
         }
 
         var startDateTime = firstDefined(game, ["startDateTime", "startTime", "dateTime", "gameDate", "gameDateTime"]);
-        var startDate = startDateTime != null ? new Date(startDateTime) : null;
+        var startDate = parseDateValue(startDateTime);
         if (startDate && !Number.isNaN(startDate.getTime()) && startDate.getTime() > Date.now()) {
             return "Scheduled";
         }
@@ -717,13 +750,11 @@
         var dayLabel = nav.querySelector(".sportsmark-widget__nav-date");
         var filters = nav.querySelector(".sportsmark-widget__nav-filters");
         var dayIndex = model.selectedDay ? model.knownDays.indexOf(model.selectedDay) : -1;
-        var todayKey = localDayKey(new Date());
-        var selectedIsToday = model.selectedDay === todayKey;
 
         dayLabel.textContent = formatDayLabel(model.selectedDay);
 
         prevButton.disabled = dayIndex <= 0;
-        nextButton.disabled = dayIndex === -1 || dayIndex >= model.knownDays.length - 1 || selectedIsToday;
+        nextButton.disabled = dayIndex === -1 || dayIndex >= model.knownDays.length - 1;
 
         prevButton.onclick = function () {
             onMove(-1);
@@ -735,6 +766,11 @@
         if (filters) {
             var selectedSport = model.selectedSport || null;
             var sports = Array.isArray(model.sports) ? model.sports : [];
+            if (sports.length <= 1) {
+                filters.innerHTML = "";
+                return;
+            }
+
             var allButtonClass = "sportsmark-widget__filter-btn" + (selectedSport == null ? " sportsmark-widget__filter-btn--active" : "");
             var allMarkup = '<button class="' + allButtonClass + '" data-filter-sport="" type="button">All</button>';
             var sportMarkup = sports.map(function (sport) {
@@ -782,18 +818,15 @@
     function collectSports(games) {
         var map = {};
         var sports = [];
+        var defaultSportLabels = {};
 
         DEFAULT_FILTER_SPORTS.forEach(function (sport) {
             var sportKey = normalizeSportKey(sport.key);
-            if (!sportKey || map[sportKey]) {
+            if (!sportKey || defaultSportLabels[sportKey]) {
                 return;
             }
 
-            map[sportKey] = true;
-            sports.push({
-                key: sportKey,
-                label: sport.label
-            });
+            defaultSportLabels[sportKey] = sport.label;
         });
 
         games.forEach(function (game) {
@@ -806,7 +839,7 @@
             map[sportKey] = true;
             sports.push({
                 key: sportKey,
-                label: String(sportValue)
+                label: defaultSportLabels[sportKey] || String(sportValue)
             });
         });
 
@@ -912,33 +945,6 @@
         body.innerHTML = '<div class="sportsmark-widget__state">' + escapeHTML(message) + '</div>';
     }
 
-    function applyIntegerBrandLogoScale(container) {
-        var logo = container.querySelector(".sportsmark-widget__brand-logo");
-        if (!logo) {
-            return;
-        }
-
-        function scaleLogo() {
-            var naturalWidth = logo.naturalWidth;
-            var naturalHeight = logo.naturalHeight;
-            if (!naturalWidth || !naturalHeight) {
-                return;
-            }
-
-            var targetHeight = Math.min(128, Math.max(65, naturalHeight));
-            var scale = targetHeight / naturalHeight;
-            var scaledWidth = Math.max(1, Math.round(naturalWidth * scale));
-            var scaledHeight = Math.max(1, Math.round(naturalHeight * scale));
-
-            logo.style.width = scaledWidth + "px";
-            logo.style.height = scaledHeight + "px";
-        }
-
-        logo.addEventListener("load", scaleLogo);
-        if (logo.complete) {
-            scaleLogo();
-        }
-    }
 
 
     function mountWidget(container, options) {
@@ -972,7 +978,6 @@
             + '<div class="sportsmark-widget__body"></div>'
             + '</section>';
 
-        applyIntegerBrandLogoScale(container);
     }
 
     function createWidget(container, config) {
@@ -1031,18 +1036,7 @@
                 return;
             }
 
-            var nextDay = state.knownDays[nextIndex];
-            var todayKey = localDayKey(new Date());
-            if (nextDay > todayKey) {
-                debugLog(debug, "Day navigation blocked", {
-                    reason: "Attempted future day",
-                    nextDay: nextDay,
-                    todayKey: todayKey
-                });
-                return;
-            }
-
-            state.selectedDay = nextDay;
+            state.selectedDay = state.knownDays[nextIndex];
             debugLog(debug, "Day changed", {
                 selectedDay: state.selectedDay,
                 gamesOnDay: (state.grouped[state.selectedDay] || []).length

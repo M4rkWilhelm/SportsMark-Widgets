@@ -26,7 +26,8 @@ Use a tagged release for stable caching (recommended: `@v1.0.0`, `@v1.1.0`, etc.
 <script>
     SportsMarkWidget.create(document.getElementById('sportsmark-widget'), {
         title: 'Northwest Ace Highschool Sports', // Replaced by the logo if logo exists
-        titleLogoUrl: 'https://cdn.jsdelivr.net/gh/M4rkWilhelm/SportsMark-Widgets@v1.0.0/assets/images/nwAceHSSR.png',
+        logoUrl: 'https://cdn.jsdelivr.net/gh/M4rkWilhelm/SportsMark-Widgets@v1.0.0/assets/images/nwAceHSSR.png',
+        titleUrl: 'https://example.com', // Optional: link URL for logo/title header (defaults to "#" if omitted)
         subtitle: '', // Ignored if blank
         widgetBg: '#e2e8f0',
         gameBg: '#f8fafc',

@@ -423,12 +423,12 @@
             var baseStyle = document.createElement("style");
             baseStyle.id = "sportsmark-widget-base-styles";
             baseStyle.textContent = ""
-                + ".sportsmark-widget{font-family:'Open Sans',Arial,sans-serif;color:#fff;border:1px solid #64748b;border-radius:0.25rem;overflow:hidden;width:100%;height:100%;min-height:100%;display:flex;flex-direction:column;box-sizing:border-box;}"
-                + ".sportsmark-widget__header{color:#fff;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;}"
+                + ".sportsmark-widget{font-family:'Open Sans',Arial,sans-serif;color:#fff;border:1px solid #64748b;border-radius:0.25rem;width:100%;display:flex;flex-direction:column;}"
+                + ".sportsmark-widget__header{color:#fff;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;justify-content:center;text-align:center;}"
                 + ".sportsmark-widget__brand{font-family:'Gibson','Open Sans',Arial,sans-serif;font-weight:700;letter-spacing:.3px;}"
+                + ".sportsmark-widget__brand-link{color:inherit;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;}"
                 + ".sportsmark-widget__brand-logo{display:block;max-width:100%;max-height:128px;}"
                 + ".sportsmark-widget__sub{font-family:'Gibson','Open Sans',Arial,sans-serif;font-size:12px;opacity:.8;}"
-                + ".sportsmark-widget__header--centered{justify-content:center;text-align:center;}"
                 + ".sportsmark-widget__nav{display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:auto auto;column-gap:8px;row-gap:6px;align-items:center;color:#fff;padding:8px 12px;}"
                 + ".sportsmark-widget__nav-btn{font-family:'Open Sans',Arial,sans-serif;border:0;border-radius:0.25rem;font-weight:700;font-size:20px;cursor:pointer;width:32px;height:32px;line-height:1;align-self:stretch;display:flex;align-items:center;justify-content:center;}"
                 + ".sportsmark-widget__nav-btn[data-nav='prev']{grid-column:1;grid-row:1 / 3;}"
@@ -439,7 +439,7 @@
                 + ".sportsmark-widget__filter-btn{font-family:'Open Sans',Arial,sans-serif;border:0;font-weight:700;cursor:pointer;padding:0 2px;line-height:1;background:transparent;color:#fff;display:inline-flex;align-items:center;gap:2px;opacity:.45;transition:opacity .15s ease;}"
                 + ".sportsmark-widget__filter-btn--active{background:transparent;color:#fff;opacity:1;}"
                 + ".sportsmark-widget__filter-icon{font-size:14px;line-height:1;}"
-                + ".sportsmark-widget__body{padding:8px;overflow-y:auto;overflow-x:hidden;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),350px));grid-auto-rows:max-content;justify-content:center;align-content:start;gap:8px;color:#111;flex:1;min-height:0;}"
+                + ".sportsmark-widget__body{padding:8px;flex-grow:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),350px));grid-auto-rows:max-content;justify-content:center;align-content:start;gap:8px;color:#111;flex:1;min-height:0;}"
                 + ".sportsmark-widget__sport-divider{grid-column:1/-1;margin:4px;}"
                 + ".sportsmark-widget__game{position:relative;overflow:hidden;border:1px solid #64748b;border-radius:0.25rem;padding:8px;}"
                 + ".sportsmark-widget__game-content{position:relative;z-index:1;}"
@@ -478,6 +478,7 @@
 
         var colorStyle = document.createElement("style");
         colorStyle.textContent = ""
+            + scope + "{display:flex;flex-direction:column;width:100%;max-height:100%;min-height:0;min-width:0;}"
             + scope + " .sportsmark-widget{background:" + colors.widgetBg + ";border-color:" + colors.widgetBorderColor + ";border-width:" + borders.widgetBorderWidth + ";border-radius:" + borders.widgetBorderRadius + ";}"
             + scope + " .sportsmark-widget__header{background:" + colors.headerBg + ";}"
             + scope + " .sportsmark-widget__nav{background:" + colors.navBg + ";}"
@@ -951,17 +952,26 @@
         var title = options.title == null ? "WSLS SportsMark" : String(options.title);
         var subtitle = options.subtitle == null ? "Live Local Scores" : String(options.subtitle);
         var subtitleText = subtitle.trim();
-        var titleLogoUrl = options.titleLogoUrl == null ? "" : String(options.titleLogoUrl).trim();
-        var brandMarkup = titleLogoUrl
-            ? '<img class="sportsmark-widget__brand-logo" src="' + escapeHTML(titleLogoUrl) + '" alt="' + escapeHTML(title) + '">' 
+        var rawLogoUrl = options.logoUrl != null ? options.logoUrl : (options.logoURL != null ? options.logoURL : options.titleLogoUrl);
+        var logoUrl = rawLogoUrl == null ? "" : String(rawLogoUrl).trim();
+        var rawTitleUrl = options.titleUrl != null ? options.titleUrl : options.titleURL;
+        var titleUrl = rawTitleUrl == null ? "" : String(rawTitleUrl).trim();
+        var hasBrandLink = titleUrl !== "";
+        var resolvedBrandLink = hasBrandLink ? titleUrl : "#";
+        var brandTarget = options.titleTarget || options.titleLinkTarget || (hasBrandLink ? "_blank" : "");
+        var targetAttr = brandTarget ? ' target="' + escapeHTML(brandTarget) + '" rel="noopener noreferrer"' : '';
+
+        var innerBrandMarkup = logoUrl
+            ? '<img class="sportsmark-widget__brand-logo" src="' + escapeHTML(logoUrl) + '" alt="' + escapeHTML(title) + '">'
             : escapeHTML(title);
+        var brandMarkup = '<a class="sportsmark-widget__brand-link" href="' + escapeHTML(resolvedBrandLink) + '"' + targetAttr + '>' + innerBrandMarkup + '</a>';
         var subtitleMarkup = subtitleText
             ? '<div class="sportsmark-widget__sub">' + escapeHTML(subtitleText) + '</div>'
             : '';
         var showHeader = options.showHeader !== false;
         var headerMarkup = showHeader
             ? ''
-            + '<header class="sportsmark-widget__header' + (subtitleMarkup ? '' : ' sportsmark-widget__header--centered') + '">'
+            + '<header class="sportsmark-widget__header">'
             + '<div class="sportsmark-widget__brand">' + brandMarkup + '</div>'
             + subtitleMarkup
             + '</header>'
@@ -994,12 +1004,6 @@
             sports: [],
             selectedSport: null
         };
-
-        container.style.display = "block";
-        container.style.width = "100%";
-        container.style.height = "100%";
-        container.style.minHeight = "100%";
-        container.style.minWidth = "0";
 
         injectStyles(container, options);
         mountWidget(container, options);

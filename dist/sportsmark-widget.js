@@ -444,6 +444,8 @@
                 + ".sportsmark-widget__game{position:relative;overflow:hidden;border:1px solid #64748b;border-radius:0.25rem;padding:8px;}"
                 + ".sportsmark-widget__game-content{position:relative;z-index:1;}"
                 + ".sportsmark-widget__game-icon{position:absolute;right:8px;bottom:2px;font-size:72px;line-height:1;opacity:.2;pointer-events:none;user-select:none;}"
+                + ".sportsmark-widget__cta-row{padding:10px 12px;display:flex;justify-content:center;align-items:center;border-top:1px solid rgba(100,116,139,.45);position:sticky;bottom:0;z-index:2;}"
+                + ".sportsmark-widget__cta-link{font-family:'Open Sans',Arial,sans-serif;font-size:13px;font-weight:700;line-height:1.2;text-decoration:none;padding:8px 12px;border-radius:0.25rem;display:inline-flex;align-items:center;justify-content:center;}"
                 + ".sportsmark-widget__meta{font-size:12px;color:#4f5d6b;display:flex;justify-content:space-between;margin-bottom:6px;}"
                 + ".sportsmark-widget__teams{display:grid;grid-template-columns:1fr auto;row-gap:4px;column-gap:8px;align-items:center;}"
                 + ".sportsmark-widget__team{font-family:'Open Sans',Arial,sans-serif;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}"
@@ -462,6 +464,8 @@
             navBtnColor: sanitizeColor(options.navBtnColor || theme.navBtnColor || "#0f172a"),
             bodyBg: sanitizeColor(options.bodyBg || theme.bodyBg || widgetBg),
             gameBg: sanitizeColor(options.gameBg || theme.gameBg || "#f8fafc"),
+            ctaBg: sanitizeColor(options.ctaBg || theme.ctaBg || (options.navBg || theme.navBg || "#334155")),
+            ctaTextColor: sanitizeColor(options.ctaTextColor || theme.ctaTextColor || "#ffffff"),
             widgetBorderColor: sanitizeColor(options.widgetBorderColor || theme.widgetBorderColor || "#64748b"),
             gameBorderColor: sanitizeColor(options.gameBorderColor || theme.gameBorderColor || "#64748b")
         };
@@ -485,7 +489,9 @@
             + scope + " .sportsmark-widget__nav-btn{background:" + colors.navBtnBg + ";color:" + colors.navBtnColor + ";}"
             + scope + " .sportsmark-widget__body{background:" + colors.bodyBg + ";}"
             + scope + " .sportsmark-widget__sport-divider{border-top-color:" + colors.gameBorderColor + ";}"
-            + scope + " .sportsmark-widget__game{background:" + colors.gameBg + ";border-color:" + colors.gameBorderColor + ";border-width:" + borders.gameBorderWidth + ";border-radius:" + borders.gameBorderRadius + ";}";
+            + scope + " .sportsmark-widget__game{background:" + colors.gameBg + ";border-color:" + colors.gameBorderColor + ";border-width:" + borders.gameBorderWidth + ";border-radius:" + borders.gameBorderRadius + ";}"
+            + scope + " .sportsmark-widget__cta-row{background:" + colors.ctaBg + ";border-top-color:" + colors.widgetBorderColor + ";}"
+            + scope + " .sportsmark-widget__cta-link{background:" + colors.ctaBg + ";color:" + colors.ctaTextColor + ";border:1px solid " + colors.ctaTextColor + ";}";
         document.head.appendChild(colorStyle);
     }
 
@@ -907,6 +913,84 @@
         return "";
     }
 
+    function normalizeLoginCtaOptions(options) {
+        var cta = options.loginCta || options.cta || {};
+        var enabled = options.showLoginCta === true || cta.enabled === true;
+        var text = cta.text == null ? "Log In / Sign Up" : String(cta.text);
+        var href = cta.href == null ? "https://sportsmark.wsls.com/accounts/login/" : String(cta.href).trim();
+        var loggedInText = cta.loggedInText == null ? "Submit Scores" : String(cta.loggedInText);
+        var loggedInHref = cta.loggedInHref == null ? "https://sportsmark.wsls.com/" : String(cta.loggedInHref).trim();
+        var autoDetectLogin = cta.autoDetectLogin !== false;
+        var target = cta.target == null ? "_blank" : String(cta.target);
+
+        return {
+            enabled: enabled && href !== "",
+            loggedOutText: text,
+            loggedOutHref: href,
+            loggedInText: loggedInText,
+            loggedInHref: loggedInHref,
+            autoDetectLogin: autoDetectLogin,
+            target: target
+        };
+    }
+
+    function readArcUserUuid() {
+        if (typeof window === "undefined" || !window.localStorage) {
+            return null;
+        }
+
+        try {
+            var rawProfile = window.localStorage.getItem("ArcId.USER_PROFILE");
+            if (!rawProfile) {
+                return null;
+            }
+            var profile = JSON.parse(rawProfile);
+            if (!profile || typeof profile.uuid !== "string" || profile.uuid.trim() === "") {
+                return null;
+            }
+            return profile.uuid;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function resolveCtaState(ctaOptions) {
+        var isLoggedIn = ctaOptions.autoDetectLogin && Boolean(readArcUserUuid());
+        return {
+            text: isLoggedIn ? ctaOptions.loggedInText : ctaOptions.loggedOutText,
+            href: isLoggedIn ? ctaOptions.loggedInHref : ctaOptions.loggedOutHref
+        };
+    }
+
+    function resolveCtaHref(href, selectedDay) {
+        if (!href) {
+            return "#";
+        }
+        if (!selectedDay) {
+            return href;
+        }
+        return href.replace("{date}", encodeURIComponent(selectedDay));
+    }
+
+    function renderBottomCta(root, ctaOptions, selectedDay) {
+        var ctaRow = root.querySelector(".sportsmark-widget__cta-row");
+        if (!ctaRow) {
+            return;
+        }
+
+        if (!ctaOptions.enabled) {
+            ctaRow.hidden = true;
+            ctaRow.innerHTML = "";
+            return;
+        }
+
+        var ctaState = resolveCtaState(ctaOptions);
+        var href = resolveCtaHref(ctaState.href, selectedDay);
+        var target = ctaOptions.target ? ' target="' + escapeHTML(ctaOptions.target) + '" rel="noopener noreferrer"' : "";
+        ctaRow.hidden = false;
+        ctaRow.innerHTML = '<a class="sportsmark-widget__cta-link" href="' + escapeHTML(href) + '"' + target + '>' + escapeHTML(ctaState.text) + '</a>';
+    }
+
     function renderGames(root, games) {
         var body = root.querySelector(".sportsmark-widget__body");
         if (!games.length) {
@@ -986,12 +1070,14 @@
             + '<div class="sportsmark-widget__nav-filters"></div>'
             + '</div>'
             + '<div class="sportsmark-widget__body"></div>'
+            + '<div class="sportsmark-widget__cta-row" hidden></div>'
             + '</section>';
 
     }
 
     function createWidget(container, config) {
         var options = config || {};
+        var ctaOptions = normalizeLoginCtaOptions(options);
         var feed = options.feed || createApiFeed(options);
         var refreshMs = options.refreshMs || 60000;
         var debug = Boolean(options.debug);
@@ -1047,6 +1133,7 @@
             });
             renderDayNav(container, state, moveDay);
             renderGames(container, filteredGamesForSelectedDay(state));
+            renderBottomCta(container, ctaOptions, state.selectedDay);
         }
 
         function changeSportFilter(sportKey) {
@@ -1056,6 +1143,7 @@
             });
             renderDayNav(container, state, moveDay);
             renderGames(container, filteredGamesForSelectedDay(state));
+            renderBottomCta(container, ctaOptions, state.selectedDay);
         }
 
         state.onFilterChange = changeSportFilter;
@@ -1095,12 +1183,14 @@
                         });
                         renderDayNav(container, state, moveDay);
                         renderGames(container, filteredGamesForSelectedDay(state));
+                        renderBottomCta(container, ctaOptions, state.selectedDay);
                     } else {
                         debugLog(debug, "No day selected after refresh", {
                             knownDays: state.knownDays
                         });
                         renderDayNav(container, state, moveDay);
                         setState(container, "No games available.");
+                        renderBottomCta(container, ctaOptions, state.selectedDay);
                     }
                 }
             }).catch(function (error) {
@@ -1109,6 +1199,7 @@
                 });
                 if (!destroyed) {
                     setState(container, "Unable to load scores right now.");
+                    renderBottomCta(container, ctaOptions, state.selectedDay);
                 }
             });
         }

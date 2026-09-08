@@ -40,6 +40,15 @@ Use a tagged release for stable caching (recommended: `@v1.0.0`, `@v1.1.0`, etc.
         widgetBorderRadius: '0.25rem',
         gameBorderRadius: '0.25rem',
         refreshMs: 60000, // Refresh timer, 1 minute by default
+        showLoginCta: true, // Enables bottom CTA row
+        loginCta: {
+            text: 'Log In / Sign Up',
+            href: 'https://sportsmark.wsls.com/accounts/login/',
+            loggedInText: 'Submit Scores',
+            loggedInHref: 'https://sportsmark.wsls.com/',
+            autoDetectLogin: true, // Uses localStorage ArcId.USER_PROFILE.uuid
+            target: '_blank'
+        },
         scoreStream: {
             method: 'recommended.broadcast.games.search', // API method to use
             userWidgetIds: [YOUR_SCORESTREAM_WIDGET_ID], // Widget determines school list

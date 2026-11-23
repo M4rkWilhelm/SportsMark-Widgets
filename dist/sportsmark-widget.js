@@ -418,6 +418,192 @@
         };
     }
 
+    var SPORTSMARK_DEFAULT_URL = "https://sportsmark.wsls.com/api/v1/games/";
+    var SPORTSMARK_DEFAULT_TIMEOUT_MS = 8000;
+    // Sports where the gender is implied, so the card doesn't repeat it (Scholastic Bowl is always Coed).
+    var SPORTSMARK_SINGLE_GENDER_SPORTS = ["football", "baseball", "softball", "scholastic bowl"];
+
+    function normalizeSportsMarkOptions(options) {
+        var sportsMark = options.sportsMark;
+        if (sportsMark === false) {
+            return null;
+        }
+
+        var config = sportsMark && typeof sportsMark === "object" ? sportsMark : {};
+        var url = config.url == null ? SPORTSMARK_DEFAULT_URL : String(config.url).trim();
+        if (!url) {
+            return null;
+        }
+
+        var timeoutMs = Number(config.timeoutMs);
+        return {
+            url: url,
+            timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : SPORTSMARK_DEFAULT_TIMEOUT_MS,
+            from: config.from || null,
+            to: config.to || null,
+            sport: config.sport || null,
+            gender: config.gender || null
+        };
+    }
+
+    // SportsMark dates are YYYY-MM-DD with no time. Anchor them at local noon so
+    // the game lands on that calendar day in the viewer's timezone (new Date("YYYY-MM-DD")
+    // is UTC midnight, which is the previous evening in the US).
+    function parseSportsMarkDate(value) {
+        var match = typeof value === "string" ? value.match(/^(\d{4})-(\d{2})-(\d{2})$/) : null;
+        if (!match) {
+            return null;
+        }
+        var date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function sportsMarkStatus(game, dayKey, hasScore) {
+        if (game.is_final) {
+            return "Final";
+        }
+
+        var todayKey = localDayKey(new Date());
+        if (dayKey > todayKey) {
+            return "Scheduled";
+        }
+        if (dayKey === todayKey) {
+            return hasScore ? "In progress" : "Scheduled";
+        }
+        // Past games often aren't marked final in SportsMark; like the SportsMark site, show no label for them.
+        return hasScore ? "" : "No score reported";
+    }
+
+    // Only link to http(s) URLs so a bad article_url can't become a javascript: link.
+    function safeArticleUrl(value) {
+        if (typeof value !== "string") {
+            return null;
+        }
+        var trimmed = value.trim();
+        return /^https?:\/\//i.test(trimmed) ? trimmed : null;
+    }
+
+    function mapSportsMarkGame(game) {
+        if (!game || typeof game !== "object") {
+            return null;
+        }
+
+        var date = parseSportsMarkDate(game.date);
+        if (!date) {
+            return null;
+        }
+
+        // Scores default to 0 in SportsMark, so 0-0 on an unfinished game means "not reported yet".
+        var hasScore = Boolean(game.home_score || game.away_score);
+        var showScores = game.is_final || hasScore;
+        var details = [];
+        var sportKey = normalizeSportKey(game.sport);
+        if (game.gender && SPORTSMARK_SINGLE_GENDER_SPORTS.indexOf(sportKey) === -1) {
+            details.push(game.gender);
+        }
+        if (game.series_game_number != null) {
+            details.push("Game " + game.series_game_number);
+        }
+
+        return {
+            id: "sportsmark-" + game.id,
+            source: "sportsmark",
+            sport: game.sport,
+            status: sportsMarkStatus(game, localDayKey(date), hasScore),
+            dateTime: date,
+            homeTeam: game.home_name || game.home_school || "Home",
+            awayTeam: game.away_name || game.away_school || "Away",
+            homeScore: showScores ? game.home_score : null,
+            awayScore: showScores ? game.away_score : null,
+            updatedAt: details.join(" · "),
+            articleUrl: safeArticleUrl(game.article_url)
+        };
+    }
+
+    function createSportsMarkFeed(sportsMark, debug) {
+        function buildRequestUrl() {
+            var params = [];
+            ["from", "to", "sport", "gender"].forEach(function (key) {
+                if (sportsMark[key]) {
+                    params.push(key + "=" + encodeURIComponent(sportsMark[key]));
+                }
+            });
+            if (!params.length) {
+                return sportsMark.url;
+            }
+            return sportsMark.url + (sportsMark.url.indexOf("?") === -1 ? "?" : "&") + params.join("&");
+        }
+
+        return function () {
+            var requestUrl = buildRequestUrl();
+            var controller = typeof AbortController === "function" ? new AbortController() : null;
+            var timeoutId = null;
+
+            debugLog(debug, "Loading SportsMark feed", {
+                url: requestUrl,
+                timeoutMs: sportsMark.timeoutMs
+            });
+
+            var timeout = new Promise(function (resolve, reject) {
+                timeoutId = window.setTimeout(function () {
+                    if (controller) {
+                        controller.abort();
+                    }
+                    reject(new Error("SportsMark request timed out after " + sportsMark.timeoutMs + "ms"));
+                }, sportsMark.timeoutMs);
+            });
+
+            var request = fetch(requestUrl, {
+                method: "GET",
+                headers: { Accept: "application/json" },
+                credentials: "omit",
+                signal: controller ? controller.signal : undefined
+            }).then(function (response) {
+                debugLog(debug, "SportsMark response received", {
+                    ok: response.ok,
+                    status: response.status
+                });
+                if (!response.ok) {
+                    throw new Error("SportsMark request failed: " + response.status);
+                }
+                return response.json();
+            }).then(function (payload) {
+                if (!payload || !Array.isArray(payload.games)) {
+                    throw new Error("SportsMark payload is missing a games array");
+                }
+                var games = payload.games.map(mapSportsMarkGame).filter(Boolean);
+                debugLog(debug, "SportsMark payload parsed", {
+                    from: payload.from || null,
+                    to: payload.to || null,
+                    generated: payload.generated || null,
+                    gamesCount: games.length
+                });
+                return games;
+            });
+
+            return Promise.race([request, timeout]).then(function (games) {
+                window.clearTimeout(timeoutId);
+                return games;
+            }, function (error) {
+                window.clearTimeout(timeoutId);
+                throw error;
+            });
+        };
+    }
+
+    // Try SportsMark first; on any failure (network, CORS, non-2xx, bad payload, timeout)
+    // load the same refresh from the fallback feed instead.
+    function createFeedWithFallback(primary, fallback, debug) {
+        return function () {
+            return primary().catch(function (error) {
+                debugLog(debug, "SportsMark feed failed, falling back to ScoreStream", {
+                    message: error && error.message ? error.message : String(error)
+                });
+                return fallback();
+            });
+        };
+    }
+
     function injectStyles(container, options) {
         if (!document.getElementById("sportsmark-widget-base-styles")) {
             var baseStyle = document.createElement("style");
@@ -447,6 +633,7 @@
                 + ".sportsmark-widget__cta-row{padding:10px 12px;display:flex;justify-content:center;align-items:center;border-top:1px solid rgba(100,116,139,.45);position:sticky;bottom:0;z-index:2;}"
                 + ".sportsmark-widget__cta-link{font-family:'Open Sans',Arial,sans-serif;font-size:13px;font-weight:700;line-height:1.2;text-decoration:none;padding:8px 12px;border-radius:0.25rem;display:inline-flex;align-items:center;justify-content:center;}"
                 + ".sportsmark-widget__meta{font-size:12px;color:#4f5d6b;display:flex;justify-content:space-between;margin-bottom:6px;}"
+                + ".sportsmark-widget__article-link{font-weight:700;color:#1e40af;text-decoration:underline;}"
                 + ".sportsmark-widget__teams{display:grid;grid-template-columns:1fr auto;row-gap:4px;column-gap:8px;align-items:center;}"
                 + ".sportsmark-widget__team{font-family:'Open Sans',Arial,sans-serif;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}"
                 + ".sportsmark-widget__score{font-family:'Open Sans',Arial,sans-serif;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;text-align:right;min-width:2ch;}"
@@ -815,7 +1002,8 @@
         { key: "softball", label: "Softball" },
         { key: "soccer", label: "Soccer" },
         { key: "volleyball", label: "Volleyball" },
-        { key: "lacrosse", label: "Lacrosse" }
+        { key: "lacrosse", label: "Lacrosse" },
+        { key: "scholastic bowl", label: "Scholastic Bowl" }
     ];
 
     function gameSportKey(game) {
@@ -876,12 +1064,14 @@
         return {
             id: game.id || game.gameId || "game-" + index,
             sport: sportValue || "Game",
-            status: normalizeStatus(game),
+            // SportsMark games are mapped to final display values already, including an intentionally blank status.
+            status: game.source === "sportsmark" ? (game.status || "") : normalizeStatus(game),
             homeTeam: normalizeTeamName(game, "home", "Home"),
             awayTeam: normalizeTeamName(game, "away", "Away"),
             homeScore: normalizeScore(game, "home"),
             awayScore: normalizeScore(game, "away"),
-            updatedAt: game.updatedAt || game.lastUpdatedDisplay || ""
+            updatedAt: game.updatedAt || game.lastUpdatedDisplay || "",
+            articleUrl: game.source === "sportsmark" ? game.articleUrl : null
         };
     }
 
@@ -908,6 +1098,9 @@
         }
         if (value.indexOf("basketball") !== -1) {
             return "🏀";
+        }
+        if (value.indexOf("scholastic") !== -1) {
+            return "📚";
         }
 
         return "";
@@ -1007,6 +1200,9 @@
                 ? '<div class="sportsmark-widget__sport-divider" aria-hidden="true"></div>'
                 : '';
             previousSportKey = sportKey;
+            var articleMarkup = game.articleUrl
+                ? '<a class="sportsmark-widget__article-link" href="' + escapeHTML(game.articleUrl) + '" target="_blank" rel="noopener noreferrer">Read the story</a>'
+                : '';
             var gameIconMarkup = gameIcon
                 ? '<span class="sportsmark-widget__game-icon" aria-hidden="true">' + escapeHTML(gameIcon) + '</span>'
                 : '';
@@ -1019,7 +1215,7 @@
                 + '<span class="sportsmark-widget__team">' + escapeHTML(game.awayTeam) + '</span><span class="sportsmark-widget__score">' + escapeHTML(game.awayScore) + '</span>'
                 + '<span class="sportsmark-widget__team">' + escapeHTML(game.homeTeam) + '</span><span class="sportsmark-widget__score">' + escapeHTML(game.homeScore) + '</span>'
                 + '</div>'
-                + '<div class="sportsmark-widget__meta"><span>' + escapeHTML(game.updatedAt) + '</span><span></span></div>'
+                + '<div class="sportsmark-widget__meta"><span>' + escapeHTML(game.updatedAt) + '</span><span>' + articleMarkup + '</span></div>'
                 + '</div>'
                 + '</article>';
         }).join("");
@@ -1078,9 +1274,16 @@
     function createWidget(container, config) {
         var options = config || {};
         var ctaOptions = normalizeLoginCtaOptions(options);
-        var feed = options.feed || createApiFeed(options);
-        var refreshMs = options.refreshMs || 60000;
         var debug = Boolean(options.debug);
+        var sportsMark = options.feed ? null : normalizeSportsMarkOptions(options);
+        // Without a configured fallback source, createApiFeed returns demo games, which must never replace live SportsMark data.
+        var hasFallbackSource = Boolean(options.endpoint || options.scoreStream || options.requestBody);
+        var feed = options.feed || (sportsMark
+            ? (hasFallbackSource
+                ? createFeedWithFallback(createSportsMarkFeed(sportsMark, debug), createApiFeed(options), debug)
+                : createSportsMarkFeed(sportsMark, debug))
+            : createApiFeed(options));
+        var refreshMs = options.refreshMs || 60000;
         var timer = null;
         var destroyed = false;
         var state = {
